@@ -1,0 +1,7 @@
+.env
+
+chroma_store/
+data/
+documents/
+
+__pycache__/
