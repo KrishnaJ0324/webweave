@@ -7,6 +7,13 @@ An intelligent, asynchronous web crawler designed to build a rich knowledge grap
 This isn't just a scraper; it's the foundation for a powerful AI agent. It navigates modern, JavaScript-heavy websites (including SPAs built with Angular, React, etc.), understands the relationships between pages, and downloads relevant documents, creating a structured graph that an AI can reason over.
 
 -----
+## ✨ Live Demo
+
+Check out the video demo on YouTube:
+
+[![Webweave Demo](https://img.shields.io/badge/YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white)](https://youtu.be/qmsXJonPbtk)
+
+-----
 
 ## ✨ Core Features
 
