@@ -123,9 +123,9 @@ class RAGEmbedder:
 
             elif ntype == "Document":
                 local_path = attrs.get("local_path")
-                if not local_path or not os.path.exists(local_path):
+                if not local_path or not Path(local_path).exists():
                     doc_skip += 1
-                    self._log(f"[SKIP-DOC ] file missing • {url}")
+                    self._log(f"[SKIP-DOC ] missing local file • {url}")
                     continue
 
                 text = self._extract_text_from_file(Path(local_path))
@@ -151,9 +151,8 @@ class RAGEmbedder:
                 self._log(f"[SKIP-{ntype}] {url}")
                 continue
 
-        # ── finish
-        self.client.persist()
-        self._log("\n[✓] Embedding finished")
+        # ── finish (PersistentClient auto-persists in chromadb >= 0.4)
+        self._log("\n[OK] Embedding finished")
         self._log(f"    pages embedded    : {page_ok}")
         self._log(f"    documents embedded: {doc_ok}")
         self._log(f"    pages skipped     : {page_skip}")

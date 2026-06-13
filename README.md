@@ -1,6 +1,6 @@
 -----
 
-# 🤖 Graph-Native AI Crawler
+# 🕸️ Webweave – Graph RAG Web Crawler
 
 An intelligent, asynchronous web crawler designed to build a rich knowledge graph from any website, optimized for advanced Retrieval-Augmented Generation (RAG) applications.
 
@@ -26,14 +26,13 @@ The system is designed in two phases, with this crawler being the critical first
       * You provide a starting URL.
       * The crawler navigates the site, rendering pages and discovering all connected links and documents.
       * It builds a directed graph in memory, storing clean text and relationship metadata on each node.
-      * The final knowledge graph is saved as a `crawled_graph.gpickle` file, and all downloaded documents are stored in the `/documents` directory.
+      * The final knowledge graph is saved as `data/crawled_graph.json` (NetworkX node-link format), and all downloaded documents are stored in the `documents/` directory.
 
-2.  **Phase 2: Ingestion & RAG (Future Development)**
+2.  **Phase 2: Ingestion & RAG**
 
-      * An ingestion pipeline (e.g., an n8n workflow) loads the `crawled_graph.gpickle`.
-      * It chunks the text content from each node and processes the downloaded documents.
-      * This data, along with the graph relationship metadata, is embedded and stored in a vector database (e.g., Supabase, Pinecone).
-      * A Graph RAG agent can then perform multi-hop queries against this database to answer complex questions.
+      * The `/embed` endpoint loads `data/crawled_graph.json`, chunks the text from each page node, and extracts text from downloaded documents (PDF/DOCX).
+      * Chunks are embedded with the `all-MiniLM-L6-v2` SentenceTransformer model and stored in a local ChromaDB vector store (`chroma_store/`).
+      * The `/rag` endpoint retrieves the most relevant chunks and uses Anthropic Claude (`claude-haiku-4-5`) to produce a refined, summarized answer.
 
 ## 🛠️ Getting Started
 
@@ -77,9 +76,16 @@ Install all the required Python packages from the `requirements.txt` file.
 pip install -r requirements.txt
 ```
 
-*(You will need to create a `requirements.txt` file containing `fastapi`, `uvicorn`, `networkx`, `beautifulsoup4`, `playwright`, `httpx`, `aiofiles`, `python-multipart`)*
+### 4\. Configure your API key
 
-### 4\. Install Playwright Browsers
+The `/rag` endpoint calls the Anthropic API. Copy `.env.example` to `.env` and set your key:
+
+```bash
+cp .env.example .env
+# then edit .env and set ANTHROPIC_API_KEY=sk-ant-...
+```
+
+### 5\. Install Playwright Browsers
 
 Playwright requires browser binaries to run. This command downloads the recommended versions.
 
@@ -133,10 +139,23 @@ You can interact with the running API using `curl` or any API client like Postma
     curl http://127.0.0.1:8000/node/path/to/node
     ```
 
+  * **Embed the Crawled Graph** (after a crawl finishes)
+    Chunks and indexes the graph content into the local ChromaDB vector store.
+
+    ```bash
+    curl -X POST http://127.0.0.1:8000/embed
+    ```
+
+  * **Ask a Question (RAG)**
+    Retrieves relevant chunks and returns a Claude-generated summary.
+
+    ```bash
+    curl -X POST http://127.0.0.1:8000/rag -H "Content-Type: application/json" -d "{\"query\":\"What programs does the department offer?\"}"
+    ```
+
 ## 🔮 Future Development
 
-This crawler produces the perfect artifact (`crawled_graph.gpickle`) to feed into a full Graph RAG pipeline. The next steps in building out the complete solution would involve:
+The crawl → embed → RAG pipeline is implemented end-to-end. Natural next steps:
 
-1.  **Building the Ingestion Workflow**: Create a process (e.g., using n8n) to load the graph, chunk the content, and index it into a vector database like Supabase.
-2.  **Creating the RAG Agent**: Develop the AI agent that uses a "MultiHopRetriever" tool to query the vector database, leveraging the stored graph relationships.
-3.  **Implementing Multi-Modal RAG**: Enhance the crawler to process `<img>` tags, using a vision model to generate text descriptions for a richer knowledge base.
+1.  **Multi-hop Graph RAG**: Leverage the stored `hyperlink_targets` edges so retrieval can follow page relationships, not just semantic similarity.
+2.  **Implementing Multi-Modal RAG**: Process `<img>` tags, using a vision model to generate text descriptions for a richer knowledge base.

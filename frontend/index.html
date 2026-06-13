@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Webweave – Graph RAG Web Crawler</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --panel: #181b24;
+    --panel-2: #1f232f;
+    --border: #2a2f3d;
+    --text: #e6e8ee;
+    --muted: #9aa3b2;
+    --accent: #6d8bff;
+    --accent-2: #8a6dff;
+    --ok: #3ecf8e;
+    --warn: #ffb454;
+    --err: #ff6b6b;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: radial-gradient(1200px 600px at 80% -10%, #1b2030 0%, var(--bg) 55%);
+    color: var(--text);
+    min-height: 100vh;
+    line-height: 1.5;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 48px 20px 80px; }
+  header { margin-bottom: 32px; }
+  h1 {
+    font-size: 28px; margin: 0 0 6px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  header p { color: var(--muted); margin: 0; font-size: 15px; }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 22px 22px 24px;
+    margin-bottom: 18px;
+    transition: opacity .25s, border-color .25s;
+  }
+  .card.locked { opacity: .45; pointer-events: none; }
+  .card-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .step-num {
+    width: 28px; height: 28px; border-radius: 50%;
+    display: grid; place-items: center; font-size: 14px; font-weight: 600;
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--muted);
+    flex: none;
+  }
+  .step-num.done { background: var(--ok); color: #06281b; border-color: transparent; }
+  .step-num.active { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; border-color: transparent; }
+  .card-head h2 { font-size: 17px; margin: 0; }
+  .card-head .sub { color: var(--muted); font-size: 13px; }
+
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  input[type=text] {
+    flex: 1 1 320px; min-width: 0;
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+    padding: 12px 14px; border-radius: 10px; font-size: 14px; outline: none;
+    transition: border-color .2s;
+  }
+  input[type=text]:focus { border-color: var(--accent); }
+  button {
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: #fff; border: none; padding: 12px 20px; border-radius: 10px;
+    font-size: 14px; font-weight: 600; cursor: pointer; transition: transform .08s, filter .2s;
+    white-space: nowrap;
+  }
+  button:hover:not(:disabled) { filter: brightness(1.08); }
+  button:active:not(:disabled) { transform: translateY(1px); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button.ghost { background: var(--panel-2); border: 1px solid var(--border); }
+
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 16px; }
+  .stat { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px; text-align: center; }
+  .stat .n { font-size: 22px; font-weight: 700; }
+  .stat .l { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; padding: 4px 10px; border-radius: 999px; font-weight: 600;
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--muted);
+  }
+  .badge .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .badge.crawling { color: var(--warn); border-color: var(--warn); }
+  .badge.crawling .dot { background: var(--warn); animation: pulse 1s infinite; }
+  .badge.finished { color: var(--ok); border-color: var(--ok); }
+  .badge.finished .dot { background: var(--ok); }
+  .badge.failed { color: var(--err); border-color: var(--err); }
+  .badge.failed .dot { background: var(--err); }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+
+  .spinner {
+    width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.3);
+    border-top-color: #fff; border-radius: 50%; display: inline-block;
+    animation: spin .7s linear infinite; vertical-align: -3px; margin-right: 8px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  textarea {
+    width: 100%; background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+    padding: 12px 14px; border-radius: 10px; font-size: 14px; outline: none; resize: vertical;
+    min-height: 70px; font-family: inherit;
+  }
+  textarea:focus { border-color: var(--accent); }
+
+  .result {
+    margin-top: 16px; background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px 18px; white-space: pre-wrap; font-size: 14px;
+    line-height: 1.6; display: none;
+  }
+  .result.show { display: block; }
+  .result.error { border-color: var(--err); color: #ffc4c4; }
+  .note { color: var(--muted); font-size: 13px; margin-top: 10px; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 8px; }
+
+  .chunks-title { font-size: 13px; color: var(--muted); text-transform: uppercase;
+    letter-spacing: .05em; margin: 22px 0 10px; }
+  .chunk {
+    background: var(--panel-2); border: 1px solid var(--border); border-left: 3px solid var(--accent);
+    border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; font-size: 13px;
+  }
+  .chunk .meta { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center;
+    margin-bottom: 8px; font-size: 12px; }
+  .chunk .src { color: var(--accent); text-decoration: none; word-break: break-all; }
+  .chunk .src:hover { text-decoration: underline; }
+  .chunk .score {
+    margin-left: auto; background: rgba(109,139,255,.15); color: var(--accent);
+    padding: 2px 8px; border-radius: 999px; font-weight: 600; flex: none;
+  }
+  .chunk .body { color: var(--text); white-space: pre-wrap; line-height: 1.55;
+    max-height: 140px; overflow: auto; }
+  .chunk .ttl { color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Webweave <span style="font-size:15px;font-weight:500;color:var(--muted)">– Graph RAG Web Crawler</span></h1>
+    <p>Crawl a site &rarr; embed its knowledge graph &rarr; ask questions answered by Claude.</p>
+  </header>
+
+  <!-- STEP 1: CRAWL -->
+  <section class="card" id="card-crawl">
+    <div class="card-head">
+      <div class="step-num active" id="num-1">1</div>
+      <div>
+        <h2>Crawl a website</h2>
+        <div class="sub">Enter a starting URL. The crawler renders JS/SPA pages and builds a graph.</div>
+      </div>
+    </div>
+    <div class="row">
+      <input type="text" id="url" placeholder="https://example.com" autocomplete="off" />
+      <button id="btn-crawl">Start Crawl</button>
+    </div>
+    <div class="stats" id="stats" style="display:none">
+      <div class="stat"><div class="n" id="s-nodes">0</div><div class="l">Nodes</div></div>
+      <div class="stat"><div class="n" id="s-edges">0</div><div class="l">Edges</div></div>
+      <div class="stat"><div class="n" id="s-visited">0</div><div class="l">Visited</div></div>
+      <div class="stat"><div class="n" id="s-frontier">0</div><div class="l">Queued</div></div>
+    </div>
+    <div class="note" id="crawl-status" style="display:none">
+      <span class="badge" id="crawl-badge"><span class="dot"></span><span id="crawl-badge-text">idle</span></span>
+    </div>
+    <div class="result" id="crawl-error"></div>
+  </section>
+
+  <!-- STEP 2: EMBED -->
+  <section class="card locked" id="card-embed">
+    <div class="card-head">
+      <div class="step-num" id="num-2">2</div>
+      <div>
+        <h2>Embed the graph</h2>
+        <div class="sub">Chunk &amp; index the crawled content into the vector store.</div>
+      </div>
+    </div>
+    <button id="btn-embed">Run Embedding</button>
+    <div class="result" id="embed-result"></div>
+  </section>
+
+  <!-- STEP 3: QUERY -->
+  <section class="card locked" id="card-query">
+    <div class="card-head">
+      <div class="step-num" id="num-3">3</div>
+      <div>
+        <h2>Ask a question</h2>
+        <div class="sub">Retrieves the most relevant chunks and summarizes with Claude.</div>
+      </div>
+    </div>
+    <textarea id="query" placeholder="e.g. What programs does the department offer?"></textarea>
+    <div class="row" style="margin-top:10px">
+      <button id="btn-query">Ask</button>
+    </div>
+    <div class="result" id="query-result"></div>
+    <div id="chunks"></div>
+  </section>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const api = (path, opts) => fetch(path, opts).then(r => r.json());
+
+let pollTimer = null;
+
+function setBadge(status) {
+  const badge = $("crawl-badge");
+  $("crawl-status").style.display = "block";
+  badge.className = "badge " + status;
+  $("crawl-badge-text").textContent = status;
+}
+
+function setStats(s) {
+  $("stats").style.display = "grid";
+  $("s-nodes").textContent = s.node_count ?? 0;
+  $("s-edges").textContent = s.edge_count ?? 0;
+  $("s-visited").textContent = s.visited_count ?? 0;
+  $("s-frontier").textContent = s.frontier_size ?? 0;
+}
+
+function unlock(card, numId) {
+  $(card).classList.remove("locked");
+  $(numId).classList.add("active");
+}
+function markDone(numId) {
+  const el = $(numId);
+  el.classList.remove("active");
+  el.classList.add("done");
+  el.textContent = "✓";
+}
+
+// ---- STEP 1: CRAWL ----
+$("btn-crawl").addEventListener("click", async () => {
+  const url = $("url").value.trim();
+  if (!url) { $("url").focus(); return; }
+
+  $("btn-crawl").disabled = true;
+  $("btn-crawl").innerHTML = '<span class="spinner"></span>Crawling…';
+  $("crawl-error").className = "result";
+  setBadge("crawling");
+
+  try {
+    const res = await api("/crawl", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ start_url: url }),
+    });
+    if (res.message && res.message.includes("already")) {
+      // a crawl is already running — just start polling
+    }
+    poll();
+  } catch (e) {
+    setBadge("failed");
+    $("btn-crawl").disabled = false;
+    $("btn-crawl").textContent = "Start Crawl";
+  }
+});
+
+function poll() {
+  clearTimeout(pollTimer);
+  const tick = async () => {
+    let s;
+    try { s = await api("/status"); }
+    catch { pollTimer = setTimeout(tick, 2500); return; }
+
+    setStats(s);
+    setBadge(s.status);
+
+    if (s.status === "finished") {
+      $("btn-crawl").disabled = false;
+      $("btn-crawl").textContent = "Re-crawl";
+      markDone("num-1");
+      unlock("card-embed", "num-2");
+      return;
+    }
+    if (s.status === "failed") {
+      $("btn-crawl").disabled = false;
+      $("btn-crawl").textContent = "Retry Crawl";
+      const ce = $("crawl-error");
+      ce.className = "result show error";
+      ce.textContent = s.error
+        ? "Crawl failed — " + s.error
+        : "Crawl failed. Check the server terminal for the traceback.";
+      return;
+    }
+    pollTimer = setTimeout(tick, 2500); // keep polling while crawling/idle
+  };
+  tick();
+}
+
+// ---- STEP 2: EMBED ----
+$("btn-embed").addEventListener("click", async () => {
+  const out = $("embed-result");
+  $("btn-embed").disabled = true;
+  $("btn-embed").innerHTML = '<span class="spinner"></span>Embedding…';
+  out.className = "result";
+
+  try {
+    const res = await api("/embed", { method: "POST" });
+    if (res.error) {
+      out.className = "result show error";
+      out.textContent = "Error: " + res.error;
+      $("btn-embed").disabled = false;
+      $("btn-embed").textContent = "Retry Embedding";
+      return;
+    }
+    out.className = "result show";
+    out.textContent = res.message || "Embedding complete.";
+    markDone("num-2");
+    unlock("card-query", "num-3");
+    $("btn-embed").textContent = "Re-embed";
+  } catch (e) {
+    out.className = "result show error";
+    out.textContent = "Embedding request failed: " + e;
+    $("btn-embed").textContent = "Retry Embedding";
+  } finally {
+    $("btn-embed").disabled = false;
+  }
+});
+
+// ---- STEP 3: QUERY ----
+$("btn-query").addEventListener("click", runQuery);
+$("query").addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") runQuery();
+});
+
+async function runQuery() {
+  const q = $("query").value.trim();
+  const out = $("query-result");
+  if (!q) { $("query").focus(); return; }
+
+  $("btn-query").disabled = true;
+  $("btn-query").innerHTML = '<span class="spinner"></span>Thinking…';
+  out.className = "result";
+  $("chunks").innerHTML = "";
+
+  try {
+    const res = await api("/rag", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: q }),
+    });
+    if (res.error) {
+      out.className = "result show error";
+      out.textContent = "Error: " + res.error;
+    } else {
+      out.className = "result show";
+      out.textContent = res.Results || JSON.stringify(res, null, 2);
+      renderChunks(res.chunks || []);
+    }
+  } catch (e) {
+    out.className = "result show error";
+    out.textContent = "Query failed: " + e;
+  } finally {
+    $("btn-query").disabled = false;
+    $("btn-query").textContent = "Ask";
+  }
+}
+
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
+  ));
+}
+
+function renderChunks(chunks) {
+  const box = $("chunks");
+  // hide chunks below 1% match (score is a 0–1 fraction)
+  chunks = chunks.filter((c) => typeof c.score !== "number" || c.score >= 0.01);
+  if (!chunks.length) { box.innerHTML = ""; return; }
+  let html = '<div class="chunks-title">Source chunks (' + chunks.length + ')</div>';
+  for (const c of chunks) {
+    const score = (typeof c.score === "number") ? (c.score * 100).toFixed(0) + "% match" : "";
+    const src = c.source
+      ? '<a class="src" href="' + escapeHtml(c.source) + '" target="_blank" rel="noopener">' + escapeHtml(c.source) + '</a>'
+      : '<span class="src">unknown source</span>';
+    const ttl = c.title ? '<span class="ttl">· ' + escapeHtml(c.title) + '</span>' : "";
+    const scoreEl = score ? '<span class="score">' + score + '</span>' : "";
+    html +=
+      '<div class="chunk">' +
+        '<div class="meta">' + src + ttl + scoreEl + '</div>' +
+        '<div class="body">' + escapeHtml(c.chunk) + '</div>' +
+      '</div>';
+  }
+  box.innerHTML = html;
+}
+</script>
+</body>
+</html>

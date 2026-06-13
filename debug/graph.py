@@ -1,8 +1,9 @@
-import pickle
-import networkx as nx
+import json
 import os
 
-GRAPH_PATH = os.path.join('..', 'data', 'crawled_graph.gpickle')
+from networkx.readwrite import json_graph
+
+GRAPH_PATH = os.path.join('..', 'data', 'crawled_graph.json')
 
 print(f"[*] Inspecting graph file: {GRAPH_PATH}")
 
@@ -11,8 +12,8 @@ if not os.path.exists(GRAPH_PATH):
     exit()
 
 try:
-    with open(GRAPH_PATH, 'rb') as f:
-        graph = pickle.load(f)
+    with open(GRAPH_PATH, 'r', encoding='utf-8') as f:
+        graph = json_graph.node_link_graph(json.load(f))
 
     print(f"\n[+] Graph loaded successfully.")
     print(f"    - Total nodes: {graph.number_of_nodes()}")

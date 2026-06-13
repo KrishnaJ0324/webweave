@@ -1,25 +1,31 @@
-import chromadb
 import os
+
+import chromadb
 from dotenv import load_dotenv
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
-from google.generativeai import GenerativeModel, configure
-import google.generativeai as genai
+from anthropic import Anthropic
 
 load_dotenv()
 
+# Embedding model — MUST match the one used in app/embedder.py
+EMBED_MODEL = "all-MiniLM-L6-v2"
+# Anthropic chat model used to refine/summarize retrieved chunks
+ANTHROPIC_MODEL = "claude-haiku-4-5"
+
+
 class RAGService:
     def __init__(self, persist_directory="chroma_store"):
-        # Load API key and configure Gemini
-        api_key = os.getenv("GEMINI_API_KEY")
+        # Load API key and configure the Anthropic client
+        api_key = os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
-            raise ValueError("GEMINI_API_KEY not found in .env")
+            raise ValueError("ANTHROPIC_API_KEY not found in .env")
 
-        configure(api_key=api_key)
-        self.model = GenerativeModel("models/gemini-1.5-flash-latest")
+        self.client_llm = Anthropic(api_key=api_key)
+        self.model = ANTHROPIC_MODEL
 
         # ChromaDB setup
         self.client = chromadb.PersistentClient(path=persist_directory)
-        embedding_function = SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
+        embedding_function = SentenceTransformerEmbeddingFunction(model_name=EMBED_MODEL)
         self.collection = self.client.get_or_create_collection(
             name="rag_docs",
             embedding_function=embedding_function
@@ -30,7 +36,7 @@ class RAGService:
 
         documents = results.get("documents", [[]])[0]
         metadatas = results.get("metadatas", [[]])[0]
-        embeddings = results.get("distances", [[]])[0]
+        distances = results.get("distances", [[]])[0]
 
         if not documents:
             return {"error": "No relevant chunks found."}
@@ -39,7 +45,7 @@ class RAGService:
         raw_blocks = []
 
         for i, (doc, meta) in enumerate(zip(documents, metadatas)):
-            score = 1.0 - embeddings[i] if i < len(embeddings) else 0.0
+            score = 1.0 - distances[i] if i < len(distances) else 0.0
             block = {
                 "chunk": doc,
                 "source": meta.get("source"),
@@ -49,9 +55,8 @@ class RAGService:
             }
             formatted_chunks.append(block)
             raw_blocks.append(doc)
-        print("exit")
-        
-        # Gemini prompt
+
+        # Prompt the LLM to refine + summarize the retrieved chunks
         prompt = (
             "You are a RAG summarizer system. Given the following text chunks from crawled web pages, "
             "filter out duplicates or irrelevant text, and produce the most accurate set of one or more non-overlapping blocks of relevant information. "
@@ -62,52 +67,20 @@ class RAGService:
         )
 
         try:
-            gemini_response = self.model.generate_content({
-                "parts": [{"text": prompt}]
-            })
+            response = self.client_llm.messages.create(
+                model=self.model,
+                max_tokens=1024,
+                messages=[{"role": "user", "content": prompt}],
+            )
 
-            refined_answer = gemini_response.text.strip()
-            print(refined_answer)
+            refined_answer = "".join(
+                block.text for block in response.content if block.type == "text"
+            ).strip()
 
             return {
                 "refined_chunks": formatted_chunks,
-                "gemini_summary": refined_answer
+                "summary": refined_answer,
             }
 
         except Exception as e:
-            print(e)
-            return {"error": f"Gemini generation failed: {str(e)}"}
-
-# import chromadb
-# from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
-
-# class RAGService:
-#     def __init__(self, persist_directory="chroma_store"):
-#         # CHANGED: Updated to the new ChromaDB persistent client initialization
-#         self.client = chromadb.PersistentClient(path=persist_directory)
-        
-#         embedding_function = SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
-        
-#         self.collection = self.client.get_or_create_collection(
-#             name="rag_docs",
-#             embedding_function=embedding_function
-#         )
-
-#     def answer_query(self, query):
-#         results = self.collection.query(
-#             query_texts=[query], 
-#             n_results=5
-#         )
-        
-#         documents = results.get("documents", [[]])[0]
-#         metadatas = results.get("metadatas", [[]])[0]
-
-#         answers = []
-#         for doc, meta in zip(documents, metadatas):
-#             answers.append({
-#                 "chunk": doc,
-#                 "source": meta.get("source"),
-#                 "type": meta.get("type"),
-#                 "title": meta.get("title")
-#             })
-#         return {"answers": answers}
+            return {"error": f"LLM generation failed: {str(e)}"}
